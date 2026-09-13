@@ -6,7 +6,7 @@ const prisma = require('../lib/prisma');
 const { verifyToken, requireRole } = require('../middleware/auth');
 const { createAuditLog, getClientIp } = require('../middleware/auditLog');
 const { evaluateTestResult } = require('../services/mpeCalculator');
-const { generateVerificationSeal } = require('../services/cryptoSeal');
+const { generateVerificationSeal, buildSealInput } = require('../services/cryptoSeal');
 
 const ALL_REQUIRED_TEST_TYPES = [
   'WEIGHING_PERFORMANCE',
@@ -211,7 +211,9 @@ router.put(
     body('temperature').optional().isFloat(),
     body('humidity').optional().isFloat(),
     body('remarks').optional().isString(),
-    body('status').optional().isIn(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'FAILED']),
+    body('status').optional().isIn(['PENDING', 'IN_PROGRESS']).withMessage(
+      'Terminal status (COMPLETED/FAILED) can only be set via the /finalize endpoint, which computes the legal seal'
+    ),
   ],
   async (req, res, next) => {
     try {
@@ -486,6 +488,7 @@ router.post('/:sessionId/finalize', verifyToken, requireRole('ADMIN', 'INSPECTOR
       where: { id: sessionId },
       include: {
         instrument: true,
+        conductedBy: { select: { id: true, name: true, email: true, role: true } },
         testResults: true,
       },
     });
@@ -528,16 +531,19 @@ router.post('/:sessionId/finalize', verifyToken, requireRole('ADMIN', 'INSPECTOR
     const finalStatus = allPassed ? 'COMPLETED' : 'FAILED';
     const finalizedAt = new Date();
 
-    // SEC-CRIT-05: Compute cryptographic HMAC digital seal at finalization time
-    const sealSignature = generateVerificationSeal({
-      certificateNo: session.certificateNo,
-      instrumentId: session.instrument?.id || session.instrument?.serialNumber || session.instrumentId,
-      status: finalStatus,
-      verificationDate: finalizedAt.toISOString(),
-      officerId: session.conductedBy?.name || session.conductedBy?.id || session.conductedById || req.user?.name || req.user?.id,
-      maxCapacity: session.instrument?.maxCapacity,
-      verificationInterval: session.instrument?.verificationInterval,
-    });
+    // SEC-CRIT-05: Compute the cryptographic HMAC digital seal at finalization
+    // time. Built from the shared canonical seal-input helper so the signature is
+    // byte-identical to the one recomputed by verifyCertificate — keyed to the
+    // immutable officer id, not the display name (audit B-P0-2).
+    const sealSignature = generateVerificationSeal(
+      buildSealInput({
+        ...session,
+        status: finalStatus,
+        completedAt: finalizedAt,
+        sealedAt: finalizedAt,
+        conductedById: session.conductedById || session.conductedBy?.id,
+      })
+    );
 
     const finalizedSession = await prisma.testSession.update({
       where: { id: sessionId },

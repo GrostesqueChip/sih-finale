@@ -188,10 +188,41 @@ function computeErrorCurvePoints(testPoints = [], instrument = {}, isInService =
   });
 }
 
+/**
+ * Canonical seal-input builder — the SINGLE source of truth for which session
+ * fields enter the HMAC seal. Every call site (finalize, verify, demo seed, mock
+ * DB) MUST build the seal from this helper so signatures match across the app.
+ *
+ * Officer identity is keyed to the immutable user id (conductedById), never the
+ * display name, so renaming an officer never invalidates an already-issued
+ * certificate — and so the seal computed at finalize time (where only the id is
+ * reliably present) matches the seal recomputed at verify time.
+ *
+ * @param {Object} session - Session with instrument + conductedBy(optional) included
+ * @returns {Object} Canonical field bag for generateVerificationSeal()
+ */
+function buildSealInput(session = {}) {
+  const inst = session.instrument || {};
+  const rawDate = session.completedAt || session.sealedAt || session.createdAt || new Date();
+  const verificationDate =
+    rawDate instanceof Date ? rawDate.toISOString() : new Date(rawDate).toISOString();
+
+  return {
+    certificateNo: session.certificateNo,
+    instrumentId: inst.id || inst.serialNumber || session.instrumentId,
+    status: String(session.status || '').toUpperCase(),
+    verificationDate,
+    officerId: String(session.conductedById || session.conductedBy?.id || ''),
+    maxCapacity: inst.maxCapacity,
+    verificationInterval: inst.verificationInterval,
+  };
+}
+
 module.exports = {
   canonicalizePayload,
   generateVerificationSeal,
   verifySealSignature,
   createTamperProofSeal,
   computeErrorCurvePoints,
+  buildSealInput,
 };

@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 // Ensure HMAC_SECRET is populated before we compute demo seals, even if this
 // module is imported ahead of the server bootstrap.
 require('./bootstrapEnv').bootstrapEnv({ silent: true });
-const { generateVerificationSeal } = require('../services/cryptoSeal');
+const { generateVerificationSeal, buildSealInput } = require('../services/cryptoSeal');
 
 // Pre-computed bcrypt hashes
 const adminHash = bcrypt.hashSync('Admin@123', 10);
@@ -385,22 +385,19 @@ const testResults = [
  */
 function computeAndAssignSeals() {
   for (const session of testSessions) {
-    if (session.status !== 'COMPLETED') continue;
+    // Seal every terminal (finalized) session — both a PASS (COMPLETED) and a
+    // FAIL (FAILED) are authentically sealed legal records (audit B-P2-2).
+    if (session.status !== 'COMPLETED' && session.status !== 'FAILED') continue;
 
     const inst = instruments.find((i) => i.id === session.instrumentId);
-    const officer = users.find((u) => u.id === session.conductedById);
     if (!inst) continue;
 
-    const rawDate = session.completedAt || session.createdAt || new Date();
-    session.verificationSeal = generateVerificationSeal({
-      certificateNo: session.certificateNo,
-      instrumentId: inst.id || inst.serialNumber,
-      status: session.status,
-      verificationDate: rawDate.toISOString(),
-      officerId: officer ? officer.name : '',
-      maxCapacity: inst.maxCapacity,
-      verificationInterval: inst.verificationInterval,
-    });
+    // Built via the shared canonical helper so the seal is byte-identical to the
+    // one produced by finalize and recomputed by verifyCertificate, and keyed to
+    // the immutable officer id rather than the display name (audit B-P0-2).
+    session.verificationSeal = generateVerificationSeal(
+      buildSealInput({ ...session, instrument: inst })
+    );
   }
 }
 
