@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
+import StateEmblem from '../components/common/StateEmblem';
 
 export default function LoginPage() {
   const { t } = useTranslation();
@@ -73,13 +74,8 @@ export default function LoginPage() {
         <div className="w-full max-w-md bg-white border border-slate-200 rounded-lg shadow-sm p-8">
           {/* Header & National Emblem Symbol */}
           <div className="text-center mb-6">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary-50 border border-primary-200 text-[#1e3a5f] mb-3">
-              <img
-                src="/assets/ashoka-chakra.jpg"
-                alt="Ashoka Chakra"
-                className="w-10 h-10 object-contain"
-                loading="eager"
-              />
+            <div className="inline-flex items-center justify-center mb-3">
+              <StateEmblem size="lg" showMotto={false} />
             </div>
             <h1 className="text-2xl font-extrabold text-[#1e3a5f] tracking-tight">
               NAWI-ReportPro

@@ -26,6 +26,59 @@ import {
   roundTo,
 } from '../../utils/metrology';
 
+/**
+ * A reading is "filled" only if the officer actually typed a finite number.
+ * Blank / null / non-numeric entries are NOT coerced into a value — doing so
+ * would fabricate a passing reading, which is a legal-metrology disqualifier.
+ */
+function isFilled(v) {
+  return v !== '' && v !== null && v !== undefined && !Number.isNaN(Number(v));
+}
+
+/** Numeric value when genuinely entered, otherwise null (never a fabricated default). */
+function numOrNull(v) {
+  return isFilled(v) ? Number(v) : null;
+}
+
+/**
+ * Pure completeness assessment for a test module. Counts how many required
+ * readings are still blank so we can BLOCK finalization (Save & Complete) of a
+ * module that would otherwise be sealed with fabricated / missing data.
+ */
+function assessModuleCompleteness(testType, ctx) {
+  const type = (testType || '').toUpperCase();
+  let total = 0;
+  let filled = 0;
+  const countField = (arr, field) => {
+    (arr || []).forEach((row) => {
+      total += 1;
+      if (isFilled(row[field])) filled += 1;
+    });
+  };
+
+  if (type === 'WEIGHING_PERFORMANCE' || type === 'WEIGHING') {
+    countField(ctx.weighingPoints, 'incReading');
+    countField(ctx.weighingPoints, 'decReading');
+  } else if (type === 'REPEATABILITY') {
+    countField(ctx.repeatabilityHalf, 'reading');
+    countField(ctx.repeatabilityFull, 'reading');
+  } else if (type === 'ECCENTRICITY') {
+    countField(ctx.eccentricityPoints, 'reading');
+  } else if (type === 'TEMPERATURE' || type === 'TEMPERATURE_EFFECTS') {
+    countField(ctx.temperaturePoints, 'zeroReading');
+    countField(ctx.temperaturePoints, 'spanReading');
+  } else if (type === 'STABILITY') {
+    countField(ctx.stabilityPoints, 'reading');
+  } else if (type === 'TIME_DEPENDENCE') {
+    countField(ctx.creepPoints, 'reading');
+    total += 1;
+    if (isFilled(ctx.zeroReturnReading)) filled += 1;
+  }
+
+  const missing = total - filled;
+  return { total, filled, missing, complete: total > 0 && missing === 0 };
+}
+
 export default function TestDataEntryPage() {
   const { t } = useTranslation();
   const { id: sessionId, testType } = useParams();
@@ -304,6 +357,33 @@ export default function TestDataEntryPage() {
     }
   }, [instrument, session, normalizedTestType]);
 
+  // Module completeness — gates finalization so a module cannot be sealed with
+  // blank readings (which would otherwise be coerced into fabricated passes).
+  const moduleReadiness = useMemo(
+    () =>
+      assessModuleCompleteness(normalizedTestType, {
+        weighingPoints,
+        repeatabilityHalf,
+        repeatabilityFull,
+        eccentricityPoints,
+        temperaturePoints,
+        stabilityPoints,
+        creepPoints,
+        zeroReturnReading,
+      }),
+    [
+      normalizedTestType,
+      weighingPoints,
+      repeatabilityHalf,
+      repeatabilityFull,
+      eccentricityPoints,
+      temperaturePoints,
+      stabilityPoints,
+      creepPoints,
+      zeroReturnReading,
+    ]
+  );
+
   // Save mutation
   const saveMutation = useMutation({
     mutationFn: async ({ isComplete }) => {
@@ -311,19 +391,33 @@ export default function TestDataEntryPage() {
         throw new Error('Test session is finalized and sealed in read-only mode.');
       }
 
+      // Never finalize (seal) a module while any required reading is blank.
+      if (isComplete && !moduleReadiness.complete) {
+        throw new Error(
+          `Cannot complete this module: ${moduleReadiness.missing} required reading(s) are still blank. ` +
+            `Enter every reading before completing, or use "Save Progress" to store partial data.`
+        );
+      }
+
       let payloadData = {};
       if (normalizedTestType === 'WEIGHING_PERFORMANCE' || normalizedTestType === 'WEIGHING') {
         payloadData = {
           points: weighingPoints.flatMap((pt) => [
-            { appliedLoad: Number(pt.load), indicatedValue: Number(pt.incReading) || 0, isIncreasing: true },
-            { appliedLoad: Number(pt.load), indicatedValue: Number(pt.decReading) || 0, isIncreasing: false },
+            { appliedLoad: Number(pt.load), indicatedValue: numOrNull(pt.incReading), isIncreasing: true },
+            { appliedLoad: Number(pt.load), indicatedValue: numOrNull(pt.decReading), isIncreasing: false },
           ]),
         };
       } else if (normalizedTestType === 'REPEATABILITY') {
         payloadData = {
           series: [
-            { load: roundTo(Number(instrument.maxCapacity) * 0.5, 4), readings: repeatabilityHalf.map((p) => Number(p.reading) || 0) },
-            { load: Number(instrument.maxCapacity), readings: repeatabilityFull.map((p) => Number(p.reading) || 0) },
+            {
+              load: roundTo(Number(instrument.maxCapacity) * 0.5, 4),
+              readings: repeatabilityHalf.map((p) => p.reading).filter(isFilled).map(Number),
+            },
+            {
+              load: Number(instrument.maxCapacity),
+              readings: repeatabilityFull.map((p) => p.reading).filter(isFilled).map(Number),
+            },
           ],
         };
       } else if (normalizedTestType === 'ECCENTRICITY') {
@@ -332,16 +426,16 @@ export default function TestDataEntryPage() {
           positions: eccentricityPoints.map((pt, idx) => ({
             position: idx === 0 ? 'CENTER' : `POS_${idx + 1}`,
             appliedLoad: eccLoad,
-            indicatedValue: Number(pt.reading) || eccLoad,
+            indicatedValue: numOrNull(pt.reading),
           })),
         };
       } else if (normalizedTestType === 'TEMPERATURE' || normalizedTestType === 'TEMPERATURE_EFFECTS') {
         payloadData = {
           temperaturePoints: temperaturePoints.map((pt) => ({
             temperature: Number(pt.temp),
-            zeroIndication: Number(pt.zeroReading) || 0,
+            zeroIndication: numOrNull(pt.zeroReading),
             spanLoad: Number(instrument.maxCapacity),
-            spanIndication: Number(pt.spanReading) || Number(instrument.maxCapacity),
+            spanIndication: numOrNull(pt.spanReading),
           })),
         };
       } else if (normalizedTestType === 'STABILITY') {
@@ -349,7 +443,7 @@ export default function TestDataEntryPage() {
           timePoints: stabilityPoints.map((pt) => ({
             timestampMinutes: Number(pt.timeHrs) * 60,
             zeroReading: 0,
-            loadReading: Number(pt.reading) || Number(instrument.maxCapacity),
+            loadReading: numOrNull(pt.reading),
             appliedLoad: Number(instrument.maxCapacity),
           })),
         };
@@ -358,11 +452,11 @@ export default function TestDataEntryPage() {
           testLoad: Number(instrument.maxCapacity),
           creepReadings: creepPoints.map((pt) => ({
             minute: Number(pt.min),
-            indication: Number(pt.reading) || Number(instrument.maxCapacity),
+            indication: numOrNull(pt.reading),
           })),
           zeroReturn: {
             appliedLoad: Number(instrument.maxCapacity),
-            indicationAfterUnload: Number(zeroReturnReading) || 0,
+            indicationAfterUnload: numOrNull(zeroReturnReading),
           },
         };
       }
@@ -1477,6 +1571,11 @@ export default function TestDataEntryPage() {
           </div>
         ) : (
           <div className="flex items-center gap-2.5">
+            {!moduleReadiness.complete && (
+              <span className="text-[11px] font-semibold text-amber-700">
+                {moduleReadiness.missing} reading(s) blank — enter all to complete
+              </span>
+            )}
             <button
               type="button"
               onClick={() => saveMutation.mutate({ isComplete: false })}
@@ -1490,8 +1589,13 @@ export default function TestDataEntryPage() {
             <button
               type="button"
               onClick={() => saveMutation.mutate({ isComplete: true })}
-              disabled={saveMutation.isPending}
-              className="inline-flex items-center gap-1.5 px-5 py-2 text-xs font-bold text-white bg-primary-600 rounded hover:bg-primary-700 transition-colors shadow-sm disabled:opacity-50"
+              disabled={saveMutation.isPending || !moduleReadiness.complete}
+              title={
+                moduleReadiness.complete
+                  ? 'Evaluate and seal this module'
+                  : `Cannot complete: ${moduleReadiness.missing} required reading(s) still blank`
+              }
+              className="inline-flex items-center gap-1.5 px-5 py-2 text-xs font-bold text-white bg-primary-600 rounded hover:bg-primary-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <FiCheckCircle className="w-3.5 h-3.5" />
               <span>{t('common.saveAndComplete', 'Save & Complete Module')}</span>

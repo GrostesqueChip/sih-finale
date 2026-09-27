@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import request from 'supertest';
 import app from '../../server/src/index';
-import { generateVerificationSeal, verifySealSignature } from '../../server/src/services/cryptoSeal';
+import { generateVerificationSeal, verifySealSignature, buildSealInput } from '../../server/src/services/cryptoSeal';
 import { SAMPLE_INSTRUMENTS, MOCK_OFFICER } from '../helpers/testUtils';
 import prisma from '../../server/src/lib/prisma';
 
@@ -34,6 +34,9 @@ describe('Tier 3: Cross-Feature - Public Verification, Cryptographic Seal & Erro
       ],
     };
 
+    // Finalized session -> real stored HMAC seal (id-keyed officer field).
+    mockSession.verificationSeal = generateVerificationSeal(buildSealInput(mockSession));
+
     const spy = vi.spyOn(prisma.testSession, 'findUnique').mockResolvedValueOnce(mockSession);
 
     const res = await request(app).get(`/api/reports/verify/${certNo}`);
@@ -48,7 +51,7 @@ describe('Tier 3: Cross-Feature - Public Verification, Cryptographic Seal & Erro
       instrumentId: res.body.instrument.id || res.body.instrument.serialNumber,
       status: res.body.status,
       verificationDate: res.body.verificationDate,
-      officerId: res.body.verificationOfficer.name,
+      officerId: MOCK_OFFICER.id,
       maxCapacity: res.body.instrument.maxCapacity,
       verificationInterval: res.body.instrument.verificationInterval,
     }, res.body.sealSignature);

@@ -138,7 +138,7 @@ export default function ErrorEnvelopeChart({
     const maxObsError = processedPoints.reduce((max, p) => Math.max(max, Math.abs(p.error)), 0);
     const domainCandidate = Math.max(maxMpe * 1.35, maxObsError * 1.25, e * 1.5);
     return {
-      maxMpeAcrossSpan: maxMpe,
+      maxMpeAcrossSpan: Number(maxMpe.toFixed(4)),
       yDomainMax: Number(domainCandidate.toFixed(4)),
     };
   }, [maxLoadDomain, accClass, e, ranges, isInService, processedPoints]);
@@ -314,8 +314,8 @@ export default function ErrorEnvelopeChart({
     return {
       maxPosErr: maxPos,
       maxNegErr: maxNeg,
-      maxAbsErr: Math.max(Math.abs(maxPos), Math.abs(maxNeg)),
-      maxHysteresis: maxHys,
+      maxAbsErr: Number(Math.max(Math.abs(maxPos), Math.abs(maxNeg)).toFixed(4)),
+      maxHysteresis: Number(maxHys.toFixed(4)),
       overallPass,
     };
   }, [processedPoints, loadingPoints, unloadingPoints]);

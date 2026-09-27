@@ -57,7 +57,7 @@ export default function ReportPage() {
   const [copiedCert, setCopiedCert] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
-  const { data: session, isLoading } = useQuery({
+  const { data: session, isLoading, isError } = useQuery({
     queryKey: ['report-session', sessionId],
     queryFn: async () => {
       const res = await apiClient.get(`/tests/${sessionId}`);
@@ -88,6 +88,65 @@ export default function ReportPage() {
       return weighingTest.data.points;
     }
     return [];
+  }, [session]);
+
+  // Real module completion + verdict roll-up. Never assert "6/6 all passed" —
+  // count what was actually executed and derive the verdict from module results.
+  const REQUIRED_MODULE_COUNT = 6;
+  const moduleStats = useMemo(() => {
+    const modules = Array.isArray(session?.testResults) ? session.testResults : [];
+    const executed = modules.length;
+    const verdicts = modules.map((m) => String(m.result || '').toUpperCase());
+    const anyFail = verdicts.includes('FAIL');
+    const allPass = executed >= REQUIRED_MODULE_COUNT && verdicts.every((v) => v === 'PASS');
+    return { executed, anyFail, allPass };
+  }, [session]);
+
+  // Genuine ISO GUM / EURAMET cg-18 uncertainty budget, computed from the real
+  // repeatability series + instrument spec for this session. Returns null when the
+  // underlying data is insufficient, so the UI shows a neutral placeholder rather
+  // than inventing a budget.
+  const uncertaintyBudget = useMemo(() => {
+    const inst = session?.instrument || {};
+    const max = Number(inst.maxCapacity);
+    const e = Number(inst.verificationInterval ?? inst.verificationScaleInterval_e);
+    const d = Number(inst.actualInterval ?? inst.verificationInterval ?? e);
+    if (!Number.isFinite(max) || max <= 0 || !Number.isFinite(d) || d <= 0) return null;
+
+    const results = Array.isArray(session?.testResults) ? session.testResults : [];
+    const repTest = results.find((r) => r.testType === 'REPEATABILITY');
+    const series = repTest?.data?.series;
+    let readings = [];
+    if (Array.isArray(series)) {
+      if (series.length && Array.isArray(series[0]?.readings)) {
+        readings = series.flatMap((s) => s.readings);
+      } else {
+        readings = series.map((s) => s.indicated ?? s.reading ?? s.indication);
+      }
+    }
+    readings = readings.map(Number).filter((v) => Number.isFinite(v));
+
+    let u_A = null;
+    if (readings.length > 1) {
+      const mean = readings.reduce((a, b) => a + b, 0) / readings.length;
+      const variance = readings.reduce((s, r) => s + (r - mean) ** 2, 0) / (readings.length - 1);
+      u_A = Math.sqrt(variance) / Math.sqrt(readings.length);
+    }
+
+    // Type B components (rectangular distributions -> divide by sqrt(3))
+    const u_weights = (0.00005 * max) / Math.sqrt(3); // reference weights ~50 ppm
+    const u_res = d / (2 * Math.sqrt(3)); // digital rounding of one interval
+    const u_ecc = (0.0001 * max) / Math.sqrt(3); // residual eccentricity
+    const aA = u_A ?? 0;
+    const u_c = Math.sqrt(aA ** 2 + u_weights ** 2 + u_res ** 2 + u_ecc ** 2);
+    const k = 2;
+    const U = k * u_c;
+
+    const wpTest = results.find((r) => r.testType === 'WEIGHING_PERFORMANCE');
+    const maxMpe = Number(wpTest?.calculations?.maxMpeAllowed);
+    const tur = Number.isFinite(maxMpe) && U > 0 ? maxMpe / U : null;
+
+    return { u_c, U, k, tur, hasTypeA: u_A !== null, unit: inst.unit || 'kg' };
   }, [session]);
 
   const handleDownload = async (type) => {
@@ -146,6 +205,29 @@ export default function ReportPage() {
     return (
       <div className="bg-white border border-slate-200 rounded-lg p-12 shadow-sm">
         <LoadingSpinner message="Loading report and verification analytics..." />
+      </div>
+    );
+  }
+
+  if (isError || !session) {
+    return (
+      <div className="max-w-3xl mx-auto bg-white border border-slate-200 rounded-lg p-10 shadow-sm text-center space-y-4">
+        <div className="mx-auto w-12 h-12 rounded-full bg-red-50 text-red-600 flex items-center justify-center">
+          <FiFileText className="w-6 h-6" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-900">Verification Record Not Found</h2>
+        <p className="text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
+          No test session matches this reference, or the record could not be loaded. An official
+          certificate exists only after an inspection has been finalized and cryptographically sealed.
+        </p>
+        <button
+          type="button"
+          onClick={() => navigate('/tests')}
+          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-primary-600 rounded hover:bg-primary-700 transition-colors"
+        >
+          <FiArrowLeft className="w-3.5 h-3.5" />
+          <span>Back to Test Sessions</span>
+        </button>
       </div>
     );
   }
@@ -248,7 +330,7 @@ export default function ReportPage() {
       <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm space-y-4">
         <h2 className="text-sm font-bold text-[#1e3a5f] border-b border-slate-100 pb-2 flex items-center justify-between">
           <span>{t('reports.verificationSummary', 'Legal Verification Summary')}</span>
-          <StatusBadge status={session?.overallVerdict || 'PASS'} />
+          <StatusBadge status={session?.overallVerdict || 'PENDING'} />
         </h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
@@ -272,7 +354,7 @@ export default function ReportPage() {
           <div>
             <span className="text-slate-500 block">Inspection Officer:</span>
             <span className="font-bold text-slate-900 block mt-0.5">
-              {session?.inspector?.name || 'Inspector Vikramaditya Sharma'}
+              {session?.inspector?.name || '—'}
             </span>
           </div>
 
@@ -349,7 +431,7 @@ export default function ReportPage() {
 
             <div className="pt-1">
               <div className="text-[10px] text-slate-500 font-mono bg-white p-2 rounded border border-slate-200 break-all select-all">
-                HMAC-SHA256 SEAL: {session?.certificateHash || session?.sealSignature || '7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069'}
+                HMAC-SHA256 SEAL: {session?.verificationSeal || session?.sealSignature || session?.certificateHash || 'Not sealed — certificate not yet finalized'}
               </div>
             </div>
           </div>
@@ -439,7 +521,11 @@ export default function ReportPage() {
           <div className="p-3 bg-slate-50 rounded border border-slate-100">
             <span className="text-slate-500 block text-[11px]">Ambient Environment</span>
             <span className="font-bold text-slate-900 text-sm">
-              {session?.temperature || 23.5}°C | {session?.humidity || 50.0}% RH | 1013.2 hPa
+              {session?.temperature != null ? `${session.temperature}°C` : '—'}
+              {' | '}
+              {session?.humidity != null ? `${session.humidity}% RH` : '—'}
+              {' | '}
+              {session?.pressure != null ? `${session.pressure} hPa` : '—'}
             </span>
           </div>
         </div>
@@ -449,11 +535,21 @@ export default function ReportPage() {
       <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 pb-2">
           <h3 className="text-sm font-bold text-[#1e3a5f]">
-            OIML R-76 Test Verification Modules Breakdown (6 / 6 Executed)
+            OIML R-76 Test Verification Modules Breakdown ({moduleStats.executed} / {REQUIRED_MODULE_COUNT} Executed)
           </h3>
-          <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded border border-emerald-200">
-            ALL MODULES PASSED
-          </span>
+          {moduleStats.anyFail ? (
+            <span className="text-xs font-bold text-red-700 bg-red-50 px-2.5 py-0.5 rounded border border-red-200">
+              MODULE FAILURE DETECTED
+            </span>
+          ) : moduleStats.allPass ? (
+            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded border border-emerald-200">
+              ALL MODULES PASSED
+            </span>
+          ) : (
+            <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded border border-amber-200">
+              {moduleStats.executed} / {REQUIRED_MODULE_COUNT} MODULES RECORDED
+            </span>
+          )}
         </div>
 
         <div className="space-y-3">
@@ -462,17 +558,23 @@ export default function ReportPage() {
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="font-bold text-slate-900 font-mono">Module {idx + 1}: {module.testType}</span>
-                  <StatusBadge status={module.result || 'PASS'} size="xs" />
+                  <StatusBadge status={module.result || 'PENDING'} size="xs" />
                 </div>
                 <p className="text-slate-600 text-[11px]">
-                  {module.remarks || module.calculations?.summary || 'Compliant with OIML R-76 Maximum Permissible Error limits.'}
+                  {module.remarks || module.calculations?.summary || '—'}
                 </p>
               </div>
 
               <div className="flex items-center gap-4 text-right">
                 <div>
                   <span className="text-[10px] text-slate-500 uppercase block">Status</span>
-                  <span className="font-bold text-emerald-700">COMPLIANT</span>
+                  {module.result === 'PASS' ? (
+                    <span className="font-bold text-emerald-700">COMPLIANT</span>
+                  ) : module.result === 'FAIL' ? (
+                    <span className="font-bold text-red-600">NON-COMPLIANT</span>
+                  ) : (
+                    <span className="font-bold text-slate-500">PENDING</span>
+                  )}
                 </div>
               </div>
             </div>
@@ -487,26 +589,38 @@ export default function ReportPage() {
           <span className="text-xs font-mono font-bold text-primary-700">k = 2 (95.45% Confidence)</span>
         </h3>
         <p className="text-xs text-slate-500 leading-relaxed">
-          The combined standard uncertainty u_c and expanded measurement uncertainty U have been computed using standard metrological components (Repeatability u_rep, Digital Resolution u_res, Reference Standard Weights u_std, Eccentricity u_ecc, and Temperature Drift u_temp) pursuant to EURAMET Calibration Guide No. 18.
+          The combined standard uncertainty u_c and expanded measurement uncertainty U are computed for
+          this session from its recorded repeatability series (Type A) together with Type B components —
+          reference standard weights (u_std), digital resolution (u_res) and residual eccentricity (u_ecc) —
+          pursuant to ISO/IEC Guide 98-3 (GUM) and EURAMET Calibration Guide No. 18.
         </p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs pt-2">
-          <div className="p-2.5 bg-slate-50 rounded border border-slate-200">
-            <span className="text-slate-500 block text-[10px]">Combined Uncertainty (uc)</span>
-            <span className="font-mono font-bold text-slate-900">0.0082 {session?.instrument?.unit || 'kg'}</span>
+        {uncertaintyBudget ? (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs pt-2">
+            <div className="p-2.5 bg-slate-50 rounded border border-slate-200">
+              <span className="text-slate-500 block text-[10px]">Combined Uncertainty (uc)</span>
+              <span className="font-mono font-bold text-slate-900">{uncertaintyBudget.u_c.toPrecision(3)} {uncertaintyBudget.unit}</span>
+            </div>
+            <div className="p-2.5 bg-slate-50 rounded border border-slate-200">
+              <span className="text-slate-500 block text-[10px]">Expanded Uncertainty (U)</span>
+              <span className="font-mono font-bold text-emerald-700">±{uncertaintyBudget.U.toPrecision(3)} {uncertaintyBudget.unit}</span>
+            </div>
+            <div className="p-2.5 bg-slate-50 rounded border border-slate-200">
+              <span className="text-slate-500 block text-[10px]">Coverage Factor (k)</span>
+              <span className="font-mono font-bold text-slate-900">{uncertaintyBudget.k.toFixed(2)} (Normal)</span>
+            </div>
+            <div className="p-2.5 bg-slate-50 rounded border border-slate-200">
+              <span className="text-slate-500 block text-[10px]">TUR (Test Uncertainty Ratio)</span>
+              <span className="font-mono font-bold text-slate-900">
+                {uncertaintyBudget.tur != null ? `${uncertaintyBudget.tur.toFixed(1)} : 1` : '—'}
+              </span>
+            </div>
           </div>
-          <div className="p-2.5 bg-slate-50 rounded border border-slate-200">
-            <span className="text-slate-500 block text-[10px]">Expanded Uncertainty (U)</span>
-            <span className="font-mono font-bold text-emerald-700">±0.0164 {session?.instrument?.unit || 'kg'}</span>
+        ) : (
+          <div className="pt-2 text-xs text-slate-500 italic">
+            A measurement-uncertainty budget requires this session's repeatability series and instrument
+            specification, which are not available for this record.
           </div>
-          <div className="p-2.5 bg-slate-50 rounded border border-slate-200">
-            <span className="text-slate-500 block text-[10px]">Coverage Factor (k)</span>
-            <span className="font-mono font-bold text-slate-900">2.00 (Normal)</span>
-          </div>
-          <div className="p-2.5 bg-slate-50 rounded border border-slate-200">
-            <span className="text-slate-500 block text-[10px]">TUR (Test Uncertainty Ratio)</span>
-            <span className="font-mono font-bold text-slate-900">&gt; 3.0:1 (Compliant)</span>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   )}

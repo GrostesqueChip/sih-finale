@@ -22,6 +22,7 @@ import {
 import { verifyCertificate } from '../../services/publicApi';
 import LoadingSpinner from '../../components/shared/LoadingSpinner';
 import ErrorEnvelopeChart from '../../components/charts/ErrorEnvelopeChart';
+import StateEmblem from '../../components/common/StateEmblem';
 
 /**
  * Public Legal Metrology Verification Portal
@@ -74,11 +75,29 @@ export default function PublicVerificationPage() {
     }
   };
 
-  // Status computation
+  // Format helpers — never render "Invalid Date"; show a neutral placeholder instead.
+  const formatDate = (value) => {
+    if (!value) return '—';
+    const d = new Date(value);
+    return isNaN(d.getTime())
+      ? '—'
+      : d.toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' });
+  };
+  const formatDateTime = (value) => {
+    if (!value) return '—';
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? '—' : d.toLocaleString('en-IN');
+  };
+
+  // Status computation — trust the backend's authoritative finalStatus, which already
+  // splits authenticity (seal), verdict (PASS/FAIL) and validity (expiry) into a single
+  // classification: VERIFIED_LEGAL / EXPIRED / REJECTED / TAMPERED / UNKNOWN.
   const verificationStatus = useMemo(() => {
     if (!data) return 'UNKNOWN';
-    if (data.status === 'EXPIRED') return 'EXPIRED';
-    if (data.status === 'REJECTED' || data.overallResult === 'FAIL' || data.valid === false) return 'REJECTED';
+    const s = String(data.status || '').toUpperCase();
+    if (['VERIFIED_LEGAL', 'EXPIRED', 'REJECTED', 'TAMPERED', 'UNKNOWN'].includes(s)) return s;
+    // Legacy fallback if the registry did not classify the record.
+    if (data.overallResult === 'FAIL' || data.valid === false) return 'REJECTED';
     return 'VERIFIED_LEGAL';
   }, [data]);
 
@@ -89,9 +108,7 @@ export default function PublicVerificationPage() {
         <div className="h-1.5 w-full bg-gradient-to-r from-orange-500 via-white to-green-600" />
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-[#1e3a5f] text-amber-300 flex items-center justify-center font-serif text-lg font-bold shadow">
-              ⚖
-            </div>
+            <StateEmblem size="sm" showMotto={false} />
             <div>
               <div className="text-xs font-bold uppercase tracking-wider text-slate-900">
                 Department of Legal Metrology
@@ -192,6 +209,8 @@ export default function PublicVerificationPage() {
                   ? 'bg-gradient-to-r from-emerald-600 to-teal-700'
                   : verificationStatus === 'EXPIRED'
                   ? 'bg-gradient-to-r from-amber-600 to-orange-700'
+                  : verificationStatus === 'UNKNOWN'
+                  ? 'bg-gradient-to-r from-slate-600 to-slate-700'
                   : 'bg-gradient-to-r from-red-600 to-rose-700'
               }`}
             >
@@ -208,6 +227,8 @@ export default function PublicVerificationPage() {
                     {verificationStatus === 'VERIFIED_LEGAL' && 'OFFICIALLY VERIFIED & LEGAL METROLOGY CERTIFIED'}
                     {verificationStatus === 'EXPIRED' && 'CERTIFICATE EXPIRED — RE-VERIFICATION MANDATORY'}
                     {verificationStatus === 'REJECTED' && 'VERIFICATION REJECTED — UNFIT FOR COMMERCIAL USE'}
+                    {verificationStatus === 'TAMPERED' && 'SEAL MISMATCH — CERTIFICATE TAMPERED OR FORGED'}
+                    {verificationStatus === 'UNKNOWN' && 'STATUS INDETERMINATE — RECORD NOT FINALIZED'}
                   </div>
                   <div className="text-xs text-white/90">
                     Compliant with Legal Metrology Act, 2009 & OIML Recommendation R-76 (Edition 2006/E)
@@ -252,7 +273,7 @@ export default function PublicVerificationPage() {
                     <FiMapPin className="text-slate-400" /> Stamping Location
                   </span>
                   <span className="text-xs font-bold text-slate-900 block truncate">
-                    {data.instrument?.location || 'Regional Metrology Testing Yard'}
+                    {data.instrument?.location || '—'}
                   </span>
                   <span className="text-slate-500 text-[11px] block">
                     State Directorate of Legal Metrology
@@ -265,11 +286,7 @@ export default function PublicVerificationPage() {
                     <FiCalendar className="text-slate-400" /> Date of Verification
                   </span>
                   <span className="text-xs font-bold text-slate-900 block font-mono">
-                    {new Date(data.verificationDate).toLocaleDateString('en-IN', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                    })}
+                    {formatDate(data.verificationDate)}
                   </span>
                   <span className="text-emerald-700 text-[11px] font-semibold">
                     Stamping Cycle: Initial Verification
@@ -282,11 +299,7 @@ export default function PublicVerificationPage() {
                     <FiCalendar className="text-slate-400" /> Validity Expiration Date
                   </span>
                   <span className="text-xs font-bold text-slate-900 block font-mono">
-                    {new Date(data.expiryDate).toLocaleDateString('en-IN', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                    })}
+                    {formatDate(data.expiryDate)}
                   </span>
                   <span className="text-slate-500 text-[11px]">
                     Statutory 1-Year Calibration Validity
@@ -299,10 +312,10 @@ export default function PublicVerificationPage() {
                     <FiUserCheck className="text-slate-400" /> Authorizing Officer
                   </span>
                   <span className="text-xs font-bold text-slate-900 block truncate">
-                    {data.verificationOfficer?.name || data.conductedBy || 'Legal Metrology Officer'}
+                    {data.verificationOfficer?.name || data.conductedBy || '—'}
                   </span>
                   <span className="text-slate-500 text-[11px] block truncate">
-                    {data.verificationOfficer?.designation || 'Senior Inspector of Legal Metrology'}
+                    {data.verificationOfficer?.designation || 'Legal Metrology Officer'}
                   </span>
                 </div>
               </div>
@@ -337,10 +350,22 @@ export default function PublicVerificationPage() {
                       Cryptographic HMAC-SHA256 Digital Verification Seal
                     </span>
                   </div>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 w-fit">
-                    <FiCheck className="w-3 h-3" />
-                    <span>AUTHENTIC & UNTAMPERED</span>
-                  </span>
+                  {data.authentic ? (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 w-fit">
+                      <FiCheck className="w-3 h-3" />
+                      <span>AUTHENTIC & UNTAMPERED</span>
+                    </span>
+                  ) : data.sealSignature ? (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-300 border border-red-500/30 flex items-center gap-1 w-fit">
+                      <FiAlertTriangle className="w-3 h-3" />
+                      <span>SEAL MISMATCH — TAMPERED</span>
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-500/20 text-slate-300 border border-slate-500/30 flex items-center gap-1 w-fit">
+                      <FiAlertTriangle className="w-3 h-3" />
+                      <span>NO DIGITAL SEAL ON RECORD</span>
+                    </span>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
@@ -348,17 +373,25 @@ export default function PublicVerificationPage() {
                     Deterministic cryptographic seal anchoring certificate payload, instrument serial, accuracy class, capacity, and inspector identity:
                   </div>
                   <div className="p-2.5 bg-slate-950 rounded border border-slate-800 flex items-center justify-between gap-2">
-                    <span className="font-mono text-[11px] text-emerald-400 break-all select-all">
-                      {data.sealSignature || 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={copySealSignature}
-                      className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition-colors shrink-0"
-                      title="Copy Seal Hash"
-                    >
-                      {copiedSeal ? <FiCheck className="w-3.5 h-3.5 text-emerald-400" /> : <FiCopy className="w-3.5 h-3.5" />}
-                    </button>
+                    {data.sealSignature ? (
+                      <>
+                        <span className="font-mono text-[11px] text-emerald-400 break-all select-all">
+                          {data.sealSignature}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={copySealSignature}
+                          className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition-colors shrink-0"
+                          title="Copy Seal Hash"
+                        >
+                          {copiedSeal ? <FiCheck className="w-3.5 h-3.5 text-emerald-400" /> : <FiCopy className="w-3.5 h-3.5" />}
+                        </button>
+                      </>
+                    ) : (
+                      <span className="font-mono text-[11px] text-slate-500 italic break-all">
+                        No cryptographic seal is recorded for this certificate.
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -386,7 +419,7 @@ export default function PublicVerificationPage() {
                 </div>
 
                 <div className="text-[11px] text-slate-400 italic">
-                  Verified timestamp: {new Date(data.verifiedAt).toLocaleString('en-IN')}
+                  Verified timestamp: {formatDateTime(data.verifiedAt)}
                 </div>
               </div>
             </div>

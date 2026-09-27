@@ -239,7 +239,6 @@ async function syncBatch(req, res, next) {
             savedId = `synced-${localId}`;
           }
         } catch (dbErr) {
-          console.error('DEBUG syncBatch dbErr:', dbErr);
           failedCount++;
           syncResults.push({
             localId,
@@ -247,7 +246,7 @@ async function syncBatch(req, res, next) {
             sessionId: null,
             certificateNo,
             status: 'FAILED',
-            error: dbErr.message || 'Database write failed',
+            error: 'Database write failed during offline batch sync.',
             syncedAt: new Date().toISOString(),
           });
           continue;

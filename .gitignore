@@ -33,5 +33,47 @@ SIH-main/
 coverage/
 archive/
 slide_images/
+claude/
+.claude/
 
+# ---------------------------------------------------------------------------
+# Scratch / internal dev artifacts — NOT part of the judge-facing deliverable.
+# These are presentation drafts, one-off build/inspection scripts, loose
+# screenshots and internal audit trackers kept locally for our own workflow.
+# ---------------------------------------------------------------------------
+
+# Presentation drafts & exports
+*.pptx
+technical_approach_content.*
+feasibility_risk_slide_redesign.html
+final_pptx_struct.txt
+inspect_out.txt
+
+# One-off Python/JS build, inspect & verification scripts (root-level scratch)
+build_*.py
+fix_*.py
+inspect_*.py
+my_inspect.py
+run_capture.py
+run_vitest.py
+export_redesign_slides.py
+validate_pptx.py
+verify_*.py
+verify_*.js
+verify_*.mjs
+capture_live_ui.mjs
+sync_root_screenshots.mjs
+
+# Loose screenshots & generated certificate/image scratch
+screenshot_*.png
+certificate_*.png
+solution_ui_collage.jpg
+*CERTIFICATE*.pdf
+
+# Internal audit trackers (dev-only, not shipped)
+AUDIT_FIX_TRACKER.md
+
+# Python audit scripts that were dropped into tests/ (keep only the JS suite)
+tests/*.py
+tests/audit_verification_*.json
 

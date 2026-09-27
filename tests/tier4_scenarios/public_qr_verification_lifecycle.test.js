@@ -48,6 +48,10 @@ describe('Tier 4: Workload Scenario 3 - End-to-End Public QR Scan Verification L
 
     expect(seal).toHaveLength(64);
 
+    // The finalized session stores this HMAC seal (officer field keyed to the
+    // immutable user id, matching tests.routes.js finalize + buildSealInput).
+    officialSession.verificationSeal = seal;
+
     // Step 3: Grain trader scans QR code linking to public URL
     // e.g. https://nawi-reportpro.gov.in/verify/CERT-2026-APMC-PUNJAB-9901
     const spy = vi.spyOn(prisma.testSession, 'findUnique').mockResolvedValueOnce(officialSession);
@@ -68,7 +72,7 @@ describe('Tier 4: Workload Scenario 3 - End-to-End Public QR Scan Verification L
       instrumentId: res.body.instrument.id || res.body.instrument.serialNumber,
       status: res.body.status,
       verificationDate: res.body.verificationDate,
-      officerId: res.body.verificationOfficer.name,
+      officerId: MOCK_OFFICER.id,
       maxCapacity: res.body.instrument.maxCapacity,
       verificationInterval: res.body.instrument.verificationInterval,
     }, res.body.sealSignature);

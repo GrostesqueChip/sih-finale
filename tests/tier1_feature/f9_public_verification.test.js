@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import request from 'supertest';
 import app from '../../server/src/index';
 import { SAMPLE_INSTRUMENTS, MOCK_OFFICER } from '../helpers/testUtils';
+import { generateVerificationSeal, buildSealInput } from '../../server/src/services/cryptoSeal';
 import prisma from '../../server/src/lib/prisma';
 
 describe('Tier 1: Feature 9 - Public Verification Portal & QR Code Verification Route', () => {
@@ -43,6 +44,10 @@ describe('Tier 1: Feature 9 - Public Verification Portal & QR Code Verification 
         },
       ],
     };
+
+    // A finalized session carries a stored HMAC seal (keyed to the immutable
+    // officer id, exactly as tests.routes.js finalize computes it).
+    mockSession.verificationSeal = generateVerificationSeal(buildSealInput(mockSession));
 
     const spy = vi.spyOn(prisma.testSession, 'findUnique').mockResolvedValueOnce(mockSession);
 

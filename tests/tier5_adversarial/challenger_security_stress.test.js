@@ -267,7 +267,7 @@ describe('Tier 5: Adversarial Challenger Stress Harness - Backend Security & Cry
       instrumentId: 'INST-WB-60000-01',
       status: 'VERIFIED_LEGAL',
       verificationDate: '2026-09-12T10:00:00.000Z',
-      officerId: 'Inspector Vikramaditya Sharma',
+      officerId: 'usr-officer-01',
       maxCapacity: 60000,
       verificationInterval: 20,
     };

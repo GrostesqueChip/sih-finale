@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { verifyToken } = require('../middleware/auth');
+const { verifyToken, requireRole } = require('../middleware/auth');
 const syncController = require('../controllers/sync.controller');
 
 /**
@@ -62,14 +62,16 @@ router.get('/status', syncController.getSyncStatus);
 
 /**
  * POST /api/sync/batch
- * Process offline inspection batches with transactional deduplication
+ * Process offline inspection batches with transactional deduplication.
+ * Minting sealed legal sessions is restricted to ADMIN/INSPECTOR — a VIEWER
+ * token must never be able to create verification records (B-P0-4).
  */
-router.post('/batch', authenticateSync, syncController.syncBatch);
+router.post('/batch', authenticateSync, requireRole('ADMIN', 'INSPECTOR'), syncController.syncBatch);
 
 /**
  * POST /api/sync/verify-keys
  * Verify whether specific idempotency keys have already been processed
  */
-router.post('/verify-keys', authenticateSync, syncController.verifyKeys);
+router.post('/verify-keys', authenticateSync, requireRole('ADMIN', 'INSPECTOR'), syncController.verifyKeys);
 
 module.exports = router;
