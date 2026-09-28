@@ -36,18 +36,25 @@ export default class ErrorBoundary extends Component {
   };
 
   handleGoHome = () => {
+    // Clear the error and actually navigate to the dashboard. This is a class
+    // component outside the Router, so we use a hard navigation.
     this.setState({ hasError: false, error: null, errorInfo: null });
+    window.location.assign('/dashboard');
   };
 
   handleClearAndRelogin = () => {
     try {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+      // Use the real auth storage keys (AuthContext persists under
+      // nawi_auth_token / nawi_auth_user); the previous 'token'/'user' keys
+      // never existed, so the session was never actually cleared.
+      localStorage.removeItem('nawi_auth_token');
+      localStorage.removeItem('nawi_auth_user');
       sessionStorage.clear();
     } catch (e) {
       console.error('Failed to clear storage:', e);
     }
     this.setState({ hasError: false, error: null, errorInfo: null });
+    window.location.assign('/login');
   };
 
   toggleDetails = () => {

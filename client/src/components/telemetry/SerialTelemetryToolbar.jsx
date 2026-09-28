@@ -388,6 +388,7 @@ export default function SerialTelemetryToolbar({
           <select
             value={protocol}
             onChange={(e) => handleProtocolChange(e.target.value)}
+            aria-label="Weighing indicator serial protocol"
             className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 font-mono focus:ring-1 focus:ring-primary-500 focus:outline-none"
           >
             {PROTOCOLS.map((p) => (
@@ -437,23 +438,27 @@ export default function SerialTelemetryToolbar({
           <button
             type="button"
             onClick={() => setShowControls((v) => !v)}
+            aria-label="Toggle load cell physics and simulator controls"
+            aria-pressed={showControls}
             className={`p-1.5 rounded-lg border text-xs transition-colors ${
               showControls ? 'bg-primary-500/20 text-primary-300 border-primary-500/40' : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
             }`}
             title="Toggle Load Cell Physics & Simulator Controls"
           >
-            <FiSliders className="w-4 h-4" />
+            <FiSliders className="w-4 h-4" aria-hidden="true" />
           </button>
 
           <button
             type="button"
             onClick={() => setShowInspector((v) => !v)}
+            aria-label="Toggle raw ASCII/hex protocol frame inspector"
+            aria-pressed={showInspector}
             className={`p-1.5 rounded-lg border text-xs transition-colors ${
               showInspector ? 'bg-primary-500/20 text-primary-300 border-primary-500/40' : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
             }`}
             title="Toggle Raw ASCII/Hex Protocol Frame Inspector"
           >
-            <FiTerminal className="w-4 h-4" />
+            <FiTerminal className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
       </div>

@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { FiPlus, FiEdit2, FiUser, FiX, FiCheck, FiShield } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiUser, FiX, FiCheck, FiShield, FiAlertCircle } from 'react-icons/fi';
 
 import apiClient from '../../hooks/useApi';
 import PageHeader from '../../components/shared/PageHeader';
 import DataTable from '../../components/shared/DataTable';
 import StatusBadge from '../../components/shared/StatusBadge';
+import useModalA11y from '../../hooks/useModalA11y';
 
 export default function UserManagementPage() {
   const { t } = useTranslation();
@@ -15,6 +16,8 @@ export default function UserManagementPage() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const closeModal = useCallback(() => setIsModalOpen(false), []);
+  const { containerRef: modalRef, dialogProps } = useModalA11y(isModalOpen, closeModal);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -27,7 +30,7 @@ export default function UserManagementPage() {
   });
 
   // Fetch users
-  const { data: users, isLoading } = useQuery({
+  const { data: users, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['users'],
     queryFn: async () => {
       const res = await apiClient.get('/users');
@@ -189,29 +192,63 @@ export default function UserManagementPage() {
         }
       />
 
-      <DataTable
-        columns={columns}
-        data={users || []}
-        isLoading={isLoading}
-        emptyMessage="No officer accounts found."
-      />
+      {isError ? (
+        <div className="bg-white border border-red-200 rounded-lg p-8 shadow-sm text-center">
+          <FiAlertCircle className="w-8 h-8 text-red-600 mx-auto mb-3" />
+          <h2 className="text-sm font-bold text-red-800 mb-1">
+            Unable to load officer accounts
+          </h2>
+          <p className="text-xs text-slate-600 max-w-md mx-auto">
+            The user directory could not be reached. This is a server or permission error, not an
+            empty registry.
+          </p>
+          {error?.message && (
+            <p className="text-[11px] text-slate-400 mt-2 font-mono">{error.message}</p>
+          )}
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="mt-4 px-4 py-2 text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 rounded"
+          >
+            Retry
+          </button>
+        </div>
+      ) : (
+        <DataTable
+          columns={columns}
+          data={users || []}
+          isLoading={isLoading}
+          emptyMessage="No officer accounts found."
+        />
+      )}
 
       {/* Create / Edit Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50">
-          <div className="bg-white rounded-lg border border-slate-200 shadow-sm max-w-lg w-full p-6 space-y-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeModal();
+          }}
+        >
+          <div
+            ref={modalRef}
+            {...dialogProps}
+            aria-labelledby="user-modal-title"
+            className="bg-white rounded-lg border border-slate-200 shadow-sm max-w-lg w-full p-6 space-y-4 focus:outline-none"
+          >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h2 className="text-sm font-bold text-slate-900">
+              <h2 id="user-modal-title" className="text-sm font-bold text-slate-900">
                 {editingUser
                   ? t('users.editUser', 'Edit Officer Account')
                   : t('users.addUser', 'Create Officer Account')}
               </h2>
               <button
                 type="button"
-                onClick={() => setIsModalOpen(false)}
+                onClick={closeModal}
+                aria-label="Close dialog"
                 className="p-1 text-slate-400 hover:text-slate-600 rounded"
               >
-                <FiX className="w-5 h-5" />
+                <FiX className="w-5 h-5" aria-hidden="true" />
               </button>
             </div>
 

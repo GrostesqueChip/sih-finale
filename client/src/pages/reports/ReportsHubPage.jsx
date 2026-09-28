@@ -16,6 +16,13 @@ import PageHeader from '../../components/shared/PageHeader';
 import LoadingSpinner from '../../components/shared/LoadingSpinner';
 import StatusBadge from '../../components/shared/StatusBadge';
 
+/** Format a date safely — returns an em dash rather than "Invalid Date". */
+function safeDate(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-IN');
+}
+
 export default function ReportsHubPage() {
   const navigate = useNavigate();
   const [downloadingId, setDownloadingId] = useState(null);
@@ -159,7 +166,7 @@ export default function ReportsHubPage() {
                     <div>
                       <span className="text-slate-400 text-[10px] block">Test Date</span>
                       <p className="font-semibold text-slate-700 font-mono">
-                        {new Date(session.startedAt || session.createdAt).toLocaleDateString('en-IN')}
+                        {safeDate(session.startedAt || session.createdAt)}
                       </p>
                     </div>
                     <div>

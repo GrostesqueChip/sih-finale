@@ -278,6 +278,32 @@ export async function removeQueuedItem(idempotencyKey) {
 }
 
 /**
+ * Persist a single queue item (insert or overwrite by idempotency key).
+ * Used to update retry counters and status without touching other items.
+ */
+async function persistQueueItem(item) {
+  const db = await getDB();
+  if (db) {
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_QUEUE, 'readwrite');
+      const store = tx.objectStore(STORE_QUEUE);
+      const req = store.put(item);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  } else {
+    const queue = getLS(LS_QUEUE_KEY, []);
+    const idx = queue.findIndex((q) => q.idempotencyKey === item.idempotencyKey);
+    if (idx >= 0) {
+      queue[idx] = item;
+    } else {
+      queue.push(item);
+    }
+    setLS(LS_QUEUE_KEY, queue);
+  }
+}
+
+/**
  * Clear entire offline queue
  */
 export async function clearOfflineQueue() {
@@ -584,6 +610,25 @@ export async function drainQueue(customClient = null) {
   } catch (error) {
     console.error('[OfflineQueue] Batch sync error:', error.message || error);
 
+    // Mark every still-pending item as RETRY and bump its retry counter, so
+    // getPendingQueue's RETRY filter reflects real state and operators can see
+    // how many transmission attempts a queued session has survived.
+    const failedAt = new Date().toISOString();
+    for (const item of pending) {
+      try {
+        await persistQueueItem({
+          ...item,
+          status: 'RETRY',
+          retryCount: (Number(item.retryCount) || 0) + 1,
+          lastError: error.response?.data?.message || error.message || 'Network connection failed',
+          lastAttemptAt: failedAt,
+          updatedAt: failedAt,
+        });
+      } catch {
+        // Best-effort counter update; a persist failure must not mask the sync error.
+      }
+    }
+
     await addSyncAuditLog({
       batchId: batchKey,
       status: 'FAILED',
@@ -613,7 +658,9 @@ export async function drainQueue(customClient = null) {
 if (typeof window !== 'undefined') {
   // Listen to browser network changes
   window.addEventListener('online', () => {
-    console.log('[OfflineQueue] Network connection re-established. Initiating auto-drain...');
+    if (import.meta.env?.DEV) {
+      console.debug('[OfflineQueue] Network connection re-established. Initiating auto-drain...');
+    }
     // Debounce to let network settle
     setTimeout(() => {
       drainQueue().catch((err) => {

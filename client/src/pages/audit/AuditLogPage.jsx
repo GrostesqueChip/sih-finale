@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { FiShield, FiSearch, FiLock, FiInfo } from 'react-icons/fi';
+import { FiShield, FiSearch, FiLock, FiInfo, FiAlertCircle } from 'react-icons/fi';
 
 import apiClient from '../../hooks/useApi';
 import PageHeader from '../../components/shared/PageHeader';
@@ -12,7 +12,7 @@ export default function AuditLogPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAction, setSelectedAction] = useState('');
 
-  const { data: auditLogs, isLoading } = useQuery({
+  const { data: auditLogs, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['audit-logs'],
     queryFn: async () => {
       const res = await apiClient.get('/audit');
@@ -47,11 +47,16 @@ export default function AuditLogPage() {
       header: t('audit.timestamp', 'Timestamp (IST)'),
       accessor: 'timestamp',
       sortable: true,
-      render: (row) => (
-        <span className="text-xs text-slate-600 font-mono">
-          {row.timestamp ? new Date(row.timestamp).toLocaleString() : '-'}
-        </span>
-      ),
+      render: (row) => {
+        if (!row.timestamp) return <span className="text-xs text-slate-600 font-mono">-</span>;
+        const d = new Date(row.timestamp);
+        // The column header says "IST", so format explicitly in Asia/Kolkata
+        // rather than trusting the browser's local timezone.
+        const text = Number.isNaN(d.getTime())
+          ? '-'
+          : d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+        return <span className="text-xs text-slate-600 font-mono">{text}</span>;
+      },
     },
     {
       header: t('audit.user', 'Officer / User'),
@@ -132,6 +137,7 @@ export default function AuditLogPage() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search action, officer, entity ID..."
+            aria-label="Search audit log by action, officer, or entity ID"
             className="w-full pl-9 pr-3.5 py-2 text-xs bg-slate-50 border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-500 focus:bg-white text-slate-800"
           />
         </div>
@@ -167,12 +173,35 @@ export default function AuditLogPage() {
         </div>
       </div>
 
-      <DataTable
-        columns={columns}
-        data={filteredLogs}
-        isLoading={isLoading}
-        emptyMessage="No audit logs matching search criteria."
-      />
+      {isError ? (
+        <div className="bg-white border border-red-200 rounded-lg p-8 shadow-sm text-center">
+          <FiAlertCircle className="w-8 h-8 text-red-600 mx-auto mb-3" />
+          <h2 className="text-sm font-bold text-red-800 mb-1">
+            Unable to load the audit trail
+          </h2>
+          <p className="text-xs text-slate-600 max-w-md mx-auto">
+            The audit log could not be retrieved. This is a server or permission error — it does
+            not mean the log is empty.
+          </p>
+          {error?.message && (
+            <p className="text-[11px] text-slate-400 mt-2 font-mono">{error.message}</p>
+          )}
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="mt-4 px-4 py-2 text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 rounded"
+          >
+            Retry
+          </button>
+        </div>
+      ) : (
+        <DataTable
+          columns={columns}
+          data={filteredLogs}
+          isLoading={isLoading}
+          emptyMessage="No audit logs matching search criteria."
+        />
+      )}
     </div>
   );
 }

@@ -37,6 +37,30 @@ export default function Breadcrumb() {
     return null;
   }
 
+  // A route segment that looks like an opaque identifier (UUID, mongo id, or a
+  // "sess-01"-style key) should not be printed raw in the breadcrumb. Render a
+  // human label derived from the parent segment instead.
+  const isIdLike = (value) =>
+    /^[0-9a-fA-F]{8}-/.test(value) || // UUID
+    /^[0-9a-fA-F]{24}$/.test(value) || // mongo-style
+    /^\d+$/.test(value) || // numeric id
+    /^(sess|inst|rep|cert)[-_]/i.test(value); // app prefixes
+
+  const idLabelForParent = (parent) => {
+    switch (parent) {
+      case 'tests':
+        return t('breadcrumb.sessionDetail', 'Session Detail');
+      case 'instruments':
+        return t('breadcrumb.instrumentDetail', 'Instrument Detail');
+      case 'reports':
+        return t('breadcrumb.report', 'Report');
+      case 'users':
+        return t('breadcrumb.officer', 'Officer');
+      default:
+        return t('breadcrumb.detail', 'Detail');
+    }
+  };
+
   return (
     <nav className="flex items-center gap-1.5 text-xs text-slate-500 mb-4" aria-label="Breadcrumb">
       <Link
@@ -50,7 +74,9 @@ export default function Breadcrumb() {
       {pathnames.map((value, index) => {
         const to = `/${pathnames.slice(0, index + 1).join('/')}`;
         const isLast = index === pathnames.length - 1;
-        const displayName = segmentNameMap[value] || value;
+        const mapped = segmentNameMap[value];
+        const displayName =
+          mapped || (isIdLike(value) ? idLabelForParent(pathnames[index - 1]) : value);
 
         return (
           <React.Fragment key={to}>

@@ -105,14 +105,15 @@ export default function TestDataEntryPage() {
     },
   });
 
-  const instrument = session?.instrument || {
-    accuracyClass: 'CLASS_III',
-    maxCapacity: 150,
-    minCapacity: 1,
-    verificationScaleInterval_e: 0.05,
-    unit: 'kg',
-    verificationType: 'INITIAL',
-  };
+  // The real instrument this session verifies. We must NEVER fabricate a
+  // fallback spec here: an invented accuracy class / Max / e would silently
+  // drive fabricated MPE and uncertainty math for the whole module. When the
+  // session has no linked instrument we render an honest error state below
+  // (after the hooks, which cannot be conditionally skipped). The empty-object
+  // fallback is a pure null-guard so those hooks don't dereference null — all
+  // its fields are undefined, so any math yields NaN, never a plausible value.
+  const instrument = session?.instrument || {};
+  const hasInstrument = Boolean(session?.instrument && session.instrument.maxCapacity != null);
 
   const isInitial = instrument.verificationType !== 'IN_SERVICE';
   const isReadOnly = session?.status === 'COMPLETED';
@@ -184,8 +185,10 @@ export default function TestDataEntryPage() {
 
   // ISO/IEC 17025 / GUM Measurement Uncertainty Evaluation
   const uncertaintyBudget = useMemo(() => {
-    const max = Number(instrument.maxCapacity) || 150;
-    const e = Number(instrument.verificationScaleInterval_e) || 0.05;
+    // No fabricated defaults: without a real instrument spec the budget is NaN,
+    // never a plausible number computed from an invented Max/e.
+    const max = Number(instrument.maxCapacity);
+    const e = Number(instrument.verificationScaleInterval_e);
     const d = Number(instrument.actualScaleInterval_d) || e;
 
     // Type A: Standard uncertainty from repeatability series (standard deviation)
@@ -633,6 +636,36 @@ export default function TestDataEntryPage() {
     return (
       <div className="bg-white border border-slate-200 rounded-lg p-12">
         <LoadingSpinner message="Loading verification parameters..." />
+      </div>
+    );
+  }
+
+  // Honest guard: a session with no linked instrument has no accuracy class,
+  // Max or e, so no MPE / uncertainty math is valid. We refuse to render the
+  // data-entry form rather than drive it from a fabricated instrument spec.
+  if (!hasInstrument) {
+    return (
+      <div className="max-w-3xl mx-auto space-y-6">
+        <PageHeader title="Test Data Entry" subtitle="OIML R-76 verification module" />
+        <div className="bg-white border border-red-200 rounded-lg p-8 shadow-sm text-center">
+          <FiInfo className="w-8 h-8 text-red-600 mx-auto mb-3" />
+          <h2 className="text-sm font-bold text-red-800 mb-1">
+            No instrument linked to this session
+          </h2>
+          <p className="text-xs text-slate-600 max-w-md mx-auto">
+            {session
+              ? 'This verification session is not linked to a registered instrument, so its accuracy class, maximum capacity and verification interval are unknown. Test data cannot be entered because the maximum permissible errors and measurement uncertainty cannot be computed without a real instrument specification.'
+              : 'This verification session could not be found. It may have been removed, or the link may be incorrect.'}
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate(`/tests/${sessionId}`)}
+            className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 rounded"
+          >
+            <FiArrowLeft className="w-3.5 h-3.5" />
+            <span>Back to Session</span>
+          </button>
+        </div>
       </div>
     );
   }

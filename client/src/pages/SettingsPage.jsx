@@ -7,16 +7,14 @@ import PageHeader from '../components/shared/PageHeader';
 
 const SETTINGS_STORAGE_KEY = 'nawi_settings';
 
+// Only the organization-header fields are user-editable local preferences.
+// Environmental defaults and the security toggles were removed: the former had
+// no UI fields, and the latter implied client control over server-enforced
+// integrity checks (see the read-only security section below).
 const DEFAULT_SETTINGS = {
   ministryName: 'Ministry of Consumer Affairs, Food & Public Distribution',
   departmentName: 'Department of Legal Metrology',
   standardReference: 'Legal Metrology (General) Rules, 2011 / OIML R-76:2006',
-  defaultTempMin: 10,
-  defaultTempMax: 40,
-  defaultHumidityMin: 40,
-  defaultHumidityMax: 70,
-  enableAuditChainValidation: true,
-  requireInspectorSignature: true,
 };
 
 export default function SettingsPage() {
@@ -189,48 +187,53 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Security & Integrity Settings */}
+        {/* Security & Integrity Settings — server-enforced, shown read-only */}
         <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm space-y-4">
           <h2 className="text-sm font-bold text-[#1e3a5f] border-b border-slate-100 pb-2">
             Audit Trail & Cryptographic Security
           </h2>
 
+          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded flex items-start gap-2.5">
+            <FiCheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+            <p className="text-[11px] text-emerald-900 leading-relaxed">
+              These integrity controls are enforced unconditionally on the server for every
+              request and cannot be disabled from this screen. They are shown here for
+              transparency, not as client-side switches.
+            </p>
+          </div>
+
           <div className="space-y-3">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                name="enableAuditChainValidation"
-                checked={settings.enableAuditChainValidation}
-                onChange={handleChange}
-                className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
-              />
+            <div className="flex items-center gap-3">
+              <FiCheckCircle className="w-4 h-4 text-emerald-600 shrink-0" aria-hidden="true" />
               <div className="text-xs">
                 <span className="font-bold text-slate-800 block">
-                  Enforce Continuous SHA-256 Audit Chain Verification
+                  Continuous SHA-256 Audit Chain Verification
+                  <span className="ml-2 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700 rounded align-middle">
+                    Always On
+                  </span>
                 </span>
                 <span className="text-slate-500">
-                  Validates block hash chaining before accepting test finalization requests.
+                  The server chains every audit block by hash; finalization requests are rejected
+                  if the chain does not validate.
                 </span>
               </div>
-            </label>
+            </div>
 
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                name="requireInspectorSignature"
-                checked={settings.requireInspectorSignature}
-                onChange={handleChange}
-                className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
-              />
+            <div className="flex items-center gap-3">
+              <FiCheckCircle className="w-4 h-4 text-emerald-600 shrink-0" aria-hidden="true" />
               <div className="text-xs">
                 <span className="font-bold text-slate-800 block">
                   Mandatory Legal Metrology Officer Sign-off
+                  <span className="ml-2 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700 rounded align-middle">
+                    Always On
+                  </span>
                 </span>
                 <span className="text-slate-500">
-                  Requires authorized inspector credentials to issue official verification seals.
+                  Role-restricted routes require authorized inspector or admin credentials to issue
+                  official verification seals.
                 </span>
               </div>
-            </label>
+            </div>
           </div>
         </div>
 

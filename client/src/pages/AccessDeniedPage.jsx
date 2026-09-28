@@ -11,7 +11,7 @@ export default function AccessDeniedPage() {
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-lg shadow-sm border border-slate-200 p-8 text-center space-y-6">
         <div className="mx-auto w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mb-4">
-          <FiLock className="w-8 h-8" />
+          <FiLock className="w-8 h-8" aria-hidden="true" />
         </div>
         
         <div className="space-y-2">
@@ -29,6 +29,7 @@ export default function AccessDeniedPage() {
         )}
 
         <button
+          type="button"
           onClick={() => navigate('/dashboard')}
           className="w-full py-2.5 px-4 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded shadow-sm transition-colors"
         >

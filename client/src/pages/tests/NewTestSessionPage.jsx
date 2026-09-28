@@ -26,65 +26,23 @@ export default function NewTestSessionPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
 
-  // Fetch available instruments
-  const { data: instruments, isLoading: isInstLoading } = useQuery({
+  // Fetch available instruments. We deliberately do NOT fabricate a fallback
+  // registry on failure: inventing instruments here would let an officer open a
+  // verification session against a scale that does not exist in the registry,
+  // and the invented specs (Max / e / class) would silently drive fabricated
+  // MPE and uncertainty math downstream. On error we surface an honest empty
+  // state instead.
+  const {
+    data: instruments,
+    isLoading: isInstLoading,
+    isError: isInstError,
+    error: instError,
+    refetch: refetchInstruments,
+  } = useQuery({
     queryKey: ['instruments-select'],
     queryFn: async () => {
-      try {
-        const res = await apiClient.get('/instruments');
-        return Array.isArray(res.data) ? res.data : res.data?.data || res.data?.instruments || [];
-      } catch {
-        return [
-          {
-            id: 'inst-1',
-            serialNumber: 'RAD-2024-9981',
-            model: 'Radwag XA 220.4Y',
-            manufacturer: 'Radwag Metrology',
-            accuracyClass: 'CLASS_I',
-            maxCapacity: 220,
-            unit: 'g',
-            verificationScaleInterval_e: 0.001,
-            actualScaleInterval_d: 0.0001,
-            location: 'National Metrology Lab, Room 204',
-          },
-          {
-            id: 'inst-2',
-            serialNumber: 'MT-IND-4420',
-            model: 'Mettler Toledo ME204',
-            manufacturer: 'Mettler Toledo India',
-            accuracyClass: 'CLASS_II',
-            maxCapacity: 2000,
-            unit: 'g',
-            verificationScaleInterval_e: 0.01,
-            actualScaleInterval_d: 0.001,
-            location: 'Quality Control Dept, Okhla',
-          },
-          {
-            id: 'inst-3',
-            serialNumber: 'ES-2023-1190',
-            model: 'Essae DS-215 Platform',
-            manufacturer: 'Essae-Teraoka Ltd',
-            accuracyClass: 'CLASS_III',
-            maxCapacity: 150,
-            unit: 'kg',
-            verificationScaleInterval_e: 0.05,
-            actualScaleInterval_d: 0.05,
-            location: 'Mandi Agricultural Market Yard',
-          },
-          {
-            id: 'inst-4',
-            serialNumber: 'AW-60T-8812',
-            model: 'Avery Weigh-Tronix Bridge',
-            manufacturer: 'Avery India',
-            accuracyClass: 'CLASS_III',
-            maxCapacity: 60000,
-            unit: 'kg',
-            verificationScaleInterval_e: 20,
-            actualScaleInterval_d: 20,
-            location: 'Inland Container Depot (ICD)',
-          },
-        ];
-      }
+      const res = await apiClient.get('/instruments');
+      return Array.isArray(res.data) ? res.data : res.data?.data || res.data?.instruments || [];
     },
   });
 
@@ -139,6 +97,38 @@ export default function NewTestSessionPage() {
     );
   }
 
+  if (isInstError) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-6">
+        <PageHeader
+          title={t('tests.newSessionTitle', 'Create New Test Session')}
+          subtitle="Initialize verification session per OIML R-76 standard procedures"
+        />
+        <div className="bg-white border border-red-200 rounded-lg p-8 shadow-sm text-center">
+          <FiAlertCircle className="w-8 h-8 text-red-600 mx-auto mb-3" />
+          <h2 className="text-sm font-bold text-red-800 mb-1">
+            Instrument registry unavailable
+          </h2>
+          <p className="text-xs text-slate-600 max-w-md mx-auto">
+            The instrument registry could not be reached, so no verification session can be
+            started right now. No instruments are shown because inventing one would let a
+            session be sealed against a scale that is not on record.
+          </p>
+          {instError?.message && (
+            <p className="text-[11px] text-slate-400 mt-2 font-mono">{instError.message}</p>
+          )}
+          <button
+            type="button"
+            onClick={() => refetchInstruments()}
+            className="mt-4 px-4 py-2 text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 rounded"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <PageHeader
@@ -184,6 +174,12 @@ export default function NewTestSessionPage() {
                 </option>
               ))}
             </select>
+            {(!instruments || instruments.length === 0) && (
+              <p className="text-[11px] text-amber-700 mt-1.5">
+                No instruments are registered yet. Add an instrument to the registry before
+                starting a verification session.
+              </p>
+            )}
           </div>
 
           {/* Selected Instrument Summary Card */}

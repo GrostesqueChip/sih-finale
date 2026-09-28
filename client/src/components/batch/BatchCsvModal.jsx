@@ -13,6 +13,7 @@ import {
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import apiClient from '../../hooks/useApi';
+import useModalA11y from '../../hooks/useModalA11y';
 
 /**
  * BatchCsvModal Component
@@ -31,6 +32,11 @@ export default function BatchCsvModal({
   const [selectedFile, setSelectedFile] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [previewData, setPreviewData] = useState(null);
+
+  // Accessibility: Esc-to-close, focus-trap, scroll-lock, focus restore.
+  // The hook itself no-ops while `isOpen` is false, so it is safe to call
+  // unconditionally above the early return below.
+  const { containerRef, dialogProps } = useModalA11y(isOpen, onClose);
 
   if (!isOpen) return null;
 
@@ -154,16 +160,26 @@ export default function BatchCsvModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fadeIn"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
+    >
+      <div
+        ref={containerRef}
+        {...dialogProps}
+        aria-labelledby="batch-csv-modal-title"
+        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden focus:outline-none"
+      >
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-primary-100 text-primary-700 rounded-xl">
-              <FiLayers className="w-5 h-5" />
+              <FiLayers className="w-5 h-5" aria-hidden="true" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">
+              <h2 id="batch-csv-modal-title" className="text-base font-bold text-slate-900">
                 Batch CSV Weighbridge Calibration Import Engine
               </h2>
               <p className="text-xs text-slate-500">
@@ -174,9 +190,10 @@ export default function BatchCsvModal({
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close dialog"
             className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors"
           >
-            <FiX className="w-5 h-5" />
+            <FiX className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
@@ -200,11 +217,20 @@ export default function BatchCsvModal({
 
           {/* Drag and Drop Zone */}
           <div
+            role="button"
+            tabIndex={0}
+            aria-label="Upload weighbridge calibration CSV file. Activate to browse, or drag and drop a file here."
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
+            className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${
               isDragging
                 ? 'border-primary-500 bg-primary-50/50 scale-[0.99]'
                 : 'border-slate-300 hover:border-primary-400 hover:bg-slate-50'
@@ -216,10 +242,11 @@ export default function BatchCsvModal({
               accept=".csv,.txt,.tsv"
               onChange={handleFileChange}
               className="hidden"
+              tabIndex={-1}
             />
             <div className="flex flex-col items-center gap-2">
               <div className="p-3 bg-primary-50 text-primary-600 rounded-full">
-                <FiUploadCloud className="w-6 h-6" />
+                <FiUploadCloud className="w-6 h-6" aria-hidden="true" />
               </div>
               <div className="font-bold text-slate-800">
                 {selectedFile ? selectedFile.name : 'Click or Drag & Drop Weighbridge Calibration CSV'}
@@ -232,8 +259,11 @@ export default function BatchCsvModal({
 
           {/* Loading Indicator */}
           {isLoading && (
-            <div className="py-8 text-center text-slate-500">
-              <div className="inline-block w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin mb-2" />
+            <div role="status" className="py-8 text-center text-slate-500">
+              <div
+                className="inline-block w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin mb-2"
+                aria-hidden="true"
+              />
               <p className="font-semibold">Calculating metrological turning-point errors and MPE envelopes...</p>
             </div>
           )}

@@ -288,7 +288,10 @@ export default function ErrorEnvelopeChart({
   // Statistics Summary
   const stats = useMemo(() => {
     if (processedPoints.length === 0) {
-      return { maxPosErr: 0, maxNegErr: 0, maxAbsErr: 0, maxHysteresis: 0, overallPass: true };
+      // No data points: conformity is UNKNOWN, not PASS. Returning `true` here
+      // would fabricate a passing verdict for an empty chart, which is a
+      // legal-metrology integrity violation. `null` renders a neutral badge.
+      return { maxPosErr: 0, maxNegErr: 0, maxAbsErr: 0, maxHysteresis: 0, overallPass: null };
     }
 
     let maxPos = 0;
@@ -403,12 +406,18 @@ export default function ErrorEnvelopeChart({
             <h3 className="text-sm font-bold text-slate-900">{title}</h3>
             <span
               className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border ${
-                stats.overallPass
+                stats.overallPass === null
+                  ? 'bg-slate-100 text-slate-500 border-slate-300'
+                  : stats.overallPass
                   ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                   : 'bg-red-50 text-red-700 border-red-200'
               }`}
             >
-              {stats.overallPass ? 'Envelope Conformity: PASS' : 'Envelope Conformity: FAIL'}
+              {stats.overallPass === null
+                ? 'Envelope Conformity: NO DATA'
+                : stats.overallPass
+                ? 'Envelope Conformity: PASS'
+                : 'Envelope Conformity: FAIL'}
             </span>
           </div>
           <p className="text-[11px] text-slate-500 mt-0.5">
@@ -492,7 +501,18 @@ export default function ErrorEnvelopeChart({
           ref={svgRef}
           viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
           className="w-full h-auto max-h-[420px] select-none"
+          role="img"
+          aria-label={
+            processedPoints.length === 0
+              ? `${title}. No calibration data points available to plot.`
+              : `${title}. ${processedPoints.length} data point${
+                  processedPoints.length === 1 ? '' : 's'
+                } plotted against OIML R-76 stepped MPE tolerance envelope. ` +
+                `Maximum absolute error ${stats.maxAbsErr} ${unit}. ` +
+                `Overall envelope conformity: ${stats.overallPass ? 'PASS' : 'FAIL'}.`
+          }
         >
+          <title>{title}</title>
           <defs>
             {/* Shaded Tolerance Band Gradient */}
             <linearGradient id="mpeEnvelopeGrad" x1="0" y1="0" x2="0" y2="1">

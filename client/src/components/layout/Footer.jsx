@@ -12,11 +12,23 @@ import {
 } from 'react-icons/fi';
 import StateEmblem from '../common/StateEmblem';
 
+// Real build timestamp injected by Vite (see vite.config.js). Falls back to
+// runtime "now" if the define is somehow absent, so we never show a stale
+// hardcoded date.
+const BUILD_TS = typeof __BUILD_TIMESTAMP__ !== 'undefined' ? __BUILD_TIMESTAMP__ : null;
+
 export default function Footer() {
   const { t, i18n } = useTranslation();
   const [activeModal, setActiveModal] = useState(null);
 
-  const lastUpdated = '12 September 2026';
+  const lastUpdatedDate = BUILD_TS ? new Date(BUILD_TS) : new Date();
+  const lastUpdated = Number.isNaN(lastUpdatedDate.getTime())
+    ? '—'
+    : lastUpdatedDate.toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
 
   const statutoryLinks = [
     {

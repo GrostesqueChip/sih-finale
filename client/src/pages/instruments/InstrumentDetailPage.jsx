@@ -261,7 +261,14 @@ export default function InstrumentDetailPage() {
               <div>
                 <p className="text-slate-500">Scale Verification Factor (n = Max / e):</p>
                 <p className="font-bold text-slate-800 font-mono">
-                  {Math.round(instrument.maxCapacity / instrument.verificationScaleInterval_e).toLocaleString()}
+                  {(() => {
+                    const max = Number(instrument.maxCapacity);
+                    const e = Number(instrument.verificationScaleInterval_e);
+                    if (!Number.isFinite(max) || !Number.isFinite(e) || e <= 0) {
+                      return '—';
+                    }
+                    return Math.round(max / e).toLocaleString();
+                  })()}
                 </p>
               </div>
               <div>
